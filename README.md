@@ -12,7 +12,7 @@ Keys
 
 
 |  Key          |  Function            |
-+--------------------------------------+
+|---------------|----------------------|
 |  n            |  Next Station        |
 |  p            |  Previous Station    |
 |  b            |  Mode DAB<-->FM      |
