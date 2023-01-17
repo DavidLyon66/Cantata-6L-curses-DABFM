@@ -1,4 +1,4 @@
-# Cantata-6L-curses-DABFM
+# Cantata curses interface for Sixth-Logic/Monkeyboard DABFM boards
 
 A Simple Character-based Curses Client for Sixth-Logic/Monkeyboard DAB/FM Boards that will work on Linux including the Raspberry-Pi.
 
