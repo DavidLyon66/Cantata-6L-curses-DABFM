@@ -10,7 +10,7 @@ Screenshot
 
 Keys
 
-+--------------------------------------+
+
 |  Key          |  Function            |
 +--------------------------------------+
 |  n            |  Next Station        |
@@ -19,7 +19,6 @@ Keys
 |  +            |  Volume Up           |
 |  -            |  Volume Down         |
 |  m            |  Mute                |
-+--------------------------------------+
 
 Installation
 
