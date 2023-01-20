@@ -6,7 +6,6 @@
 #include "KeyStoneCOMM.h"
 #include <unistd.h>
 #include <ncurses.h>
-
 #include <cstring>
 
 #include <iostream>
@@ -14,32 +13,18 @@
 
 using namespace std;
 
-// sudo apt install libncurses5-dev libncursesw5-dev
-
-char choices[11][15] = { 
-			"On/Off",
-			"Station - List",
-			"        - up",
-			"        - Down",
-			"Vol     - Up",
-			"        - Down",
-			"Scan",
-			"Mute",
-			"Presets",
-			"Settings",
-			"Exit"
-		  };
-
-char statuslines[9][22] = { 
-			"Radio :  --  Band: -",
-			"Band",
-			"Station: ",
-			"Volume:",
-			"Signal:",
-			"Mute:",
-			"Text:",
-			"Time"
-		  };
+char choices[11][15] = { 		"On/Off",
+								"Station - List",
+								"        - up",
+								"        - Down",
+								"Vol     - Up",
+								"        - Down",
+								"Scan",
+								"Mute",
+								"Presets",
+								"Band",
+								"Exit"
+						};
 		  
 vector <string> playstatuslist {"Playing      ",
 								"Searching    ",
@@ -47,6 +32,8 @@ vector <string> playstatuslist {"Playing      ",
 								"Stop         ",
 								"Sorting      ",
 								"Reconfiguring"};
+vector <wstring> stations;
+
 int n_choices = 11;
 
 void print_menu(WINDOW *menu_win, int highlight);
@@ -54,9 +41,8 @@ void print_playstatus(WINDOW *win);
 void print_presets(WINDOW *win);
 void DabScan(WINDOW *win);
 
-vector <wstring> stations;
-
 int main(int argc, char *argv[]) {
+	
 	wchar_t buffer[300];
 	bool scan=false;
 
@@ -65,16 +51,17 @@ int main(int argc, char *argv[]) {
 			scan=true;
 	}
 
-    openlog("monkeyboardCDAB", LOG_ODELAY, LOG_USER);
+    openlog("cantataCDAB", LOG_ODELAY, LOG_USER);
 	
 	WINDOW *menu_win, *status_win, *presets_win;
 	int highlight = 1;
 	int choice = 0;
 	int c;
+	int maxY, maxX;
 	
 	initscr();
-	int maxY, maxX;
 	getmaxyx(stdscr, maxY, maxX);
+	
 	clear();
 	noecho();
 	cbreak();	/* Line buffering disabled. pass on everything */
@@ -117,8 +104,6 @@ int main(int argc, char *argv[]) {
 				wstring station;
 				station.append(buffer);
 				stations.push_back(station);
-				// wprintw(status_win, "%ls\n", station.c_str());
-				// wrefresh(status_win);
 			}
 		}
 
@@ -130,12 +115,9 @@ int main(int argc, char *argv[]) {
 		
 		SetVolume(8);
 		SetStereoMode(1);
-
 		SetApplicationType(2);
-
 		SyncRTC(true);
 		
-		//int totalProgram = GetTotalProgram();
 		wprintw(status_win, "Found %d DAB channels\n", totalProgram);
 		if (totalProgram == 0) {
 
@@ -155,9 +137,6 @@ int main(int argc, char *argv[]) {
 				int radiostatus(1), freq ;				
 				if (DABAutoSearch(0,40)==true) {
 
-					wprintw(status_win, "Waiting for Playstatus\n");
-					wrefresh(status_win);
-				
 					while (radiostatus==1) {
 						freq = GetFrequency();
 						totalProgram = GetTotalProgram();
@@ -182,8 +161,7 @@ int main(int argc, char *argv[]) {
 			wclear(status_win);
 
 		} else {
-
-			PlayStream(0, 0);	// Ok..got DAB stations, play DAB then
+			PlayStream(0, 0);	// Ok.. found DAB stations, play first DAB station then
 		}
 
 
@@ -205,20 +183,24 @@ int main(int argc, char *argv[]) {
 					else 
 						++highlight;
 					break;
+					
 				case 10:
 					choice = highlight;
 					switch (choice) {
+						case 1:
+							wclear(status_win);
+							mvwprintw(status_win, 2, 12, "Halting      ");
+							wrefresh(status_win);
+							StopStream();
+							napms(150);
+							break;
+							
 						case 2:
 						case 7:
 							wclear(status_win);
 							if (GetPlayMode() == 0)
 								DabScan(status_win);
 							else {
-								// FM
-								for (int s=0;s<8;s++)
-								{
-									wprintw(status_win, "Preset %d = %ld\n",s+1, GetPreset(GetPlayMode(),s));
-								}
 
 							}
 							
@@ -232,8 +214,6 @@ int main(int argc, char *argv[]) {
 							wrefresh(status_win);
 							NextStream();
 
-							mvwprintw(status_win, 2, 2, "Loading                 ");
-							wrefresh(status_win);
 							PlayStream(GetPlayMode(), GetPlayIndex());
 							break;
 						case 4:
@@ -243,18 +223,40 @@ int main(int argc, char *argv[]) {
 							wrefresh(status_win);
 							PrevStream();
 
-							mvwprintw(status_win, 2, 2, "Loading                 ");
-							wrefresh(status_win);
 							PlayStream(GetPlayMode(), GetPlayIndex());
+							break;
+						case 9:
+							wclear(status_win);
+							mvwprintw(status_win, 2, 12, "Presets");
+							// FM
+							for (int s=0;s<8;s++)
+							{
+								wprintw(status_win, "Preset %d = %ld\n",s+1, GetPreset(GetPlayMode(),s));
+							}
+							wrefresh(status_win);
+							wgetch(status_win);
+							break;						
+						case 10:
+							wclear(status_win);
+							mvwprintw(status_win, 2, 12, "Changing Band");
+							wrefresh(status_win);
+							if (GetPlayMode()==0){
+								PlayStream(1, 94500);	// No DAB stations, just play FM 94.5Mhz
+							} else {
+								PlayStream(0, 0);		// Play DAB station 0
+							}
+							napms(150);
 							break;
 							
 						default:
 							break;
 					}
 					break;
+				case 'h':
+					choice = 1;
+					break;
 				case 'b':
-					// ? how to change to FM mode ?
-					// char playmode = GetPlayMode();
+					choice = 10;
 					break;
 				case 'n':
 					wclear(status_win);
@@ -263,18 +265,21 @@ int main(int argc, char *argv[]) {
 					PlayStream(GetPlayMode(), GetPlayIndex());
 					break;
 				case 'p':
-					choice = 4;
+					wclear(status_win);
+					PrevStream();
+					napms(150);
+					PlayStream(GetPlayMode(), GetPlayIndex());
 					break;
 				case '+':
 					wclear(status_win);
 					VolumePlus();
-					mvwprintw(status_win, 9, 2, "Volume : %.0f", (float) 6.25 * GetVolume());
+					mvwprintw(status_win, 10, 2, "Volume : %.0f", (float) 6.25 * GetVolume());
 					napms(300);
 					break;
 				case '-':
 					wclear(status_win);
 					VolumeMinus();
-					mvwprintw(status_win, 9, 2, "Volume : %.0f", (float) 6.25 * GetVolume());
+					mvwprintw(status_win, 10, 2, "Volume : %.0f", (float) 6.25 * GetVolume());
 					napms(300);
 					break;
 				case 'm':
@@ -324,7 +329,7 @@ int main(int argc, char *argv[]) {
 					} else
 						wprintw(status_win, "Not Assigned.\n\n");
 					
-					wprintw(status_win, "Press a Funtion key or [Esc] to continue\n");
+					wprintw(status_win, "Press a key to continue ");
 					wrefresh(status_win);
 					wgetch(status_win);
 					
@@ -374,15 +379,6 @@ int main(int argc, char *argv[]) {
 
 		}
 		CloseRadioPort();
-
-	    ofstream outfile("stations.txt");
-		wclear(status_win);
-		wprintw(status_win, "Stations size = %d\n",(int ) stations.size());
-		for (auto p=0;p < stations.size();p++) {
-			wprintw(status_win, "%s\n", stations.operator[](p).c_str());
-			outfile << stations.operator[](p).c_str() << '\n';
-		}
-		outfile.close();
 			
 	} else {
 			
@@ -548,27 +544,25 @@ void DabScan(WINDOW *win)
 		}
 	}
 		
-		if (totalProgram>0) {
-			wprintw(win, "Found %d programs\n", totalProgram);
-			for (int i=0;i<totalProgram;i++) {
-				if (GetProgramName(0, i, 1, buffer)) {
-					uint32 ServiceID;
-					uint16 EnsembleID;
-					unsigned char ServiceComponentID;
+	if (totalProgram>0) {
+		wprintw(win, "Found %d programs\n", totalProgram);
+		for (int i=0;i<totalProgram;i++) {
+			if (GetProgramName(0, i, 1, buffer)) {
+				uint32 ServiceID;
+				uint16 EnsembleID;
+				unsigned char ServiceComponentID;
 
-					if (GetProgramInfo(i, &ServiceComponentID, &ServiceID, &EnsembleID)) {
-						wprintw(win, "%X,%X,%X,", ServiceComponentID, ServiceID, EnsembleID);
-					}
-					wprintw(win, "DAB Index=%d, Program Name=%ls ", i, buffer);
-					
-					if (GetEnsembleName(i, 1, buffer))
-						wprintw(win, ", %ls\n", buffer);
-					else
-						wprintw(win, "\n");
+				if (GetProgramInfo(i, &ServiceComponentID, &ServiceID, &EnsembleID)) {
+					wprintw(win, "%X,%X,%X,", ServiceComponentID, ServiceID, EnsembleID);
 				}
+				wprintw(win, "DAB Index=%d, Program Name=%ls ", i, buffer);
+				
+				if (GetEnsembleName(i, 1, buffer))
+					wprintw(win, ", %ls\n", buffer);
+				else
+					wprintw(win, "\n");
 			}
-
-	
+		}
 	}
 	
 	wrefresh(win);
