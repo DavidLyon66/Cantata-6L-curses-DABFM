@@ -1,19 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <syslog.h>
 #include <string>
-#include <vector>
-#include "KeyStoneCOMM.h"
-#include <unistd.h>
-#include <ncurses.h>
 #include <cstring>
-
+#include <vector>
+#include <unistd.h>
 #include <iostream>
 #include <fstream>
+#include <syslog.h>
+#include <ncurses.h>
+
+#include "KeyStoneCOMM.h"
+//#include "simpleini/SimpleIni.h"
 
 using namespace std;
 
-char choices[11][15] = { 		"On/Off",
+vector <string> choices  { 		"On/Off",
 								"Station - List",
 								"        - up",
 								"        - Down",
@@ -32,18 +33,18 @@ vector <string> playstatuslist {"Playing      ",
 								"Stop         ",
 								"Sorting      ",
 								"Reconfiguring"};
+								
 vector <wstring> stations;
-
-int n_choices = 11;
 
 void print_menu(WINDOW *menu_win, int highlight);
 void print_playstatus(WINDOW *win);
 void print_presets(WINDOW *win);
-void DabScan(WINDOW *win);
+bool scan_dab(WINDOW *win);
 
 int main(int argc, char *argv[]) {
 	
 	wchar_t buffer[300];
+	
 	bool scan=false;
 
 	if (argc==2) {
@@ -72,24 +73,23 @@ int main(int argc, char *argv[]) {
 	int startx = 5;
 	int starty = (maxY - HEIGHT - 2) / 2;
 		
-	menu_win = newwin(HEIGHT, WIDTH, starty, startx);
-	keypad(menu_win, TRUE);
-	nodelay(menu_win,TRUE);
-
-	status_win = newwin(15, 40, starty, 30);
-	
-	presets_win = newwin(3, maxX - 6, maxY - 5, startx);
-	
-	print_menu(menu_win, highlight);
-    print_presets(presets_win);
-    
 	mvprintw(0, 0, "FM/DAB+ Radio Mudule Interface by Cantata.tech");
 	mvprintw(maxY-1, 0, "Use arrow keys to go up and down, Press enter to select a choice");
 	wrefresh(stdscr);
+
+	menu_win = newwin(HEIGHT, WIDTH, starty, startx);
+	print_menu(menu_win, highlight);
+	keypad(menu_win, TRUE);
+	nodelay(menu_win,TRUE);
+
+	presets_win = newwin(3, maxX - 6, maxY - 5, startx);
+    print_presets(presets_win);
 	
+	status_win = newwin(15, 40, starty, 30);
 	box(status_win, 0, 0);
 	wprintw(status_win, "Checking port\n");
 	wrefresh(status_win);
+	
 	if(OpenRadioPort((char*)"/dev/ttyACM0", true)) {
 		
 		wprintw(status_win, "Port opened\n");
@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (scan) {
-			DabScan(status_win);
+			scan_dab(status_win);
 			wprintf(L"Found %d programs\n", totalProgram);
 		}
 		wrefresh(status_win);
@@ -128,26 +128,11 @@ int main(int argc, char *argv[]) {
 			wrefresh(status_win);
 			
 			if ('y' == wgetch(status_win)) {
-				wprintw(status_win, "Clearing database\n");
-			    ClearDatabase();
-			    
-				wprintw(status_win, "Starting DAB Autosearch\n");
-				wrefresh(status_win);
-
-				int radiostatus(1), freq ;				
-				if (DABAutoSearch(0,40)==true) {
-
-					while (radiostatus==1) {
-						freq = GetFrequency();
-						totalProgram = GetTotalProgram();
-						wprintw(status_win, "Scanning index %d, Programs found=%d\n",freq,totalProgram);
-						radiostatus = GetPlayStatus();
-						wrefresh(status_win);
-					}
-
-					wprintw(status_win, "Scan Complete\n");
-					wrefresh(status_win);
+				
+				if (!scan_dab(status_win)) {
+					syslog(LOG_PERROR, "DAB Station search failed");	
 				}
+				
 			}
 			
 			if (totalProgram > 0)
@@ -164,7 +149,6 @@ int main(int argc, char *argv[]) {
 			PlayStream(0, 0);	// Ok.. found DAB stations, play first DAB station then
 		}
 
-
 		long playindex = GetPlayIndex();
 		
 		while(1) {
@@ -173,12 +157,12 @@ int main(int argc, char *argv[]) {
 			switch(c)
 			{	case KEY_UP:
 					if(highlight == 1)
-						highlight = n_choices;
+						highlight = choices.size();
 					else
 						--highlight;
 					break;
 				case KEY_DOWN:
-					if(highlight == n_choices)
+					if(highlight == (int ) choices.size())
 						highlight = 1;
 					else 
 						++highlight;
@@ -199,7 +183,7 @@ int main(int argc, char *argv[]) {
 						case 7:
 							wclear(status_win);
 							if (GetPlayMode() == 0)
-								DabScan(status_win);
+								scan_dab(status_win);
 							else {
 
 							}
@@ -402,19 +386,19 @@ int main(int argc, char *argv[]) {
 
 void print_menu(WINDOW *menu_win, int highlight)
 {
-	int x, y;	
+	int x(2), y(2);	
+	decltype(choices.size()) hl(highlight);
 
-	x = 2;
-	y = 2;
 	box(menu_win, 0, 0);
-	for(int i = 0; i < n_choices; ++i)
-	{	if(highlight == i + 1) /* High light the present choice */
+	
+	for(decltype(choices.size()) i = 0; i < choices.size(); ++i)
+	{	if(hl == i + 1) /* High light the present choice */
 		{	wattron(menu_win, A_REVERSE); 
-			mvwprintw(menu_win, y, x, "%s", choices[i]);
+			mvwprintw(menu_win, y, x, "%s", choices[i].c_str());
 			wattroff(menu_win, A_REVERSE);
 		}
 		else
-			mvwprintw(menu_win, y, x, "%s", choices[i]);
+			mvwprintw(menu_win, y, x, "%s", choices[i].c_str());
 		++y;
 	}
 	wrefresh(menu_win);
@@ -487,7 +471,7 @@ void print_playstatus(WINDOW *win)
 		
 	} else {
 
-		mvwprintw(win, y++, x+10, playstatuslist[playstatus].c_str());
+		mvwprintw(win, y++, x+10, "%ls", playstatuslist[playstatus].c_str());
 		
 		y++;
 		mvwprintw(win, y++, x, "PlayIndex=%d, PlayMode=%d", playindex, playmode);
@@ -526,45 +510,36 @@ void print_presets(WINDOW *win)
 	wrefresh(win);
 }
 
-void DabScan(WINDOW *win)
+bool scan_dab(WINDOW *win)
 {
-	wchar_t buffer[300];
-
 	wprintw(win, "Searching for DAB stations.....\n");
 	
-	int totalProgram = GetTotalProgram();
-		
-	if (DABAutoSearch(0,40)==true) {
-		int radiostatus=1;
-		while (radiostatus==1) {
-			int freq = GetFrequency();
-			totalProgram = GetTotalProgram();
-			wprintw(win, "Scanning index %d, found %d programs\n", freq, totalProgram);
-			radiostatus = GetPlayStatus();
-		}
-	}
-		
-	if (totalProgram>0) {
-		wprintw(win, "Found %d programs\n", totalProgram);
-		for (int i=0;i<totalProgram;i++) {
-			if (GetProgramName(0, i, 1, buffer)) {
-				uint32 ServiceID;
-				uint16 EnsembleID;
-				unsigned char ServiceComponentID;
+	wprintw(win, "Clearing database\n");
+	wrefresh(win);
+	ClearDatabase();
 
-				if (GetProgramInfo(i, &ServiceComponentID, &ServiceID, &EnsembleID)) {
-					wprintw(win, "%X,%X,%X,", ServiceComponentID, ServiceID, EnsembleID);
-				}
-				wprintw(win, "DAB Index=%d, Program Name=%ls ", i, buffer);
-				
-				if (GetEnsembleName(i, 1, buffer))
-					wprintw(win, ", %ls\n", buffer);
-				else
-					wprintw(win, "\n");
-			}
+	int radiostatus(1), freq ;				
+	if (DABAutoSearch(0,40)==true) {
+
+		int totalProgram;
+		while (radiostatus==1) {
+			freq = GetFrequency();
+			totalProgram = GetTotalProgram();
+			wprintw(win, "Scanning index %d, Programs found=%d\r",freq,totalProgram);
+			radiostatus = GetPlayStatus();
+			wrefresh(win);
 		}
+
+		wprintw(win, "\nScan Complete\n");
+		wrefresh(win);
+		
+	} else {
+		wprintw(win, "\nDAB Station Scan Failed\n");
+		wrefresh(win);
+		return(false);
 	}
 	
-	wrefresh(win);
+	return(true);
+	
 }
 
