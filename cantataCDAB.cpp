@@ -10,49 +10,43 @@
 #include <ncurses.h>
 
 #include "KeyStoneCOMM.h"
-//#include "simpleini/SimpleIni.h"
+#include "simpleini/SimpleIni.h"
 
 using namespace std;
 
-vector <string> choices  { 		"On/Off",
-								"Station - List",
-								"        - up",
-								"        - Down",
-								"Vol     - Up",
-								"        - Down",
-								"Scan",
-								"Mute",
-								"Presets",
-								"Band",
-								"Exit"
+vector <string> choices  {	"On/Off",
+							"Station - List",
+							"        - up",
+							"        - Down",
+							"Vol     - Up",
+							"        - Down",
+							"Scan",
+							"Mute",
+							"Presets",
+							"Band",
+							"Exit"
 						};
 		  
-vector <string> playstatuslist {"Playing      ",
-								"Searching    ",
-								"Tuning       ",
-								"Stop         ",
-								"Sorting      ",
-								"Reconfiguring"};
+vector <string> playstatuslist {
+							"Playing      ",
+							"Searching    ",
+							"Tuning       ",
+							"Stop         ",
+							"Sorting      ",
+							"Reconfiguring"};
 								
 vector <wstring> stations;
 
 void print_menu(WINDOW *menu_win, int highlight);
 void print_playstatus(WINDOW *win);
-void print_presets(WINDOW *win);
+void print_presets(WINDOW *win, bool setupmode=false);
 bool scan_dab(WINDOW *win);
 
 int main(int argc, char *argv[]) {
 	
 	wchar_t buffer[300];
 	
-	bool scan=false;
-
-	if (argc==2) {
-		if (atoi(argv[1])==1)
-			scan=true;
-	}
-
-    openlog("cantataCDAB", LOG_ODELAY, LOG_USER);
+	openlog("cantataCDAB", LOG_ODELAY, LOG_USER);
 	
 	WINDOW *menu_win, *status_win, *presets_win;
 	int highlight = 1;
@@ -83,7 +77,7 @@ int main(int argc, char *argv[]) {
 	nodelay(menu_win,TRUE);
 
 	presets_win = newwin(3, maxX - 6, maxY - 5, startx);
-    print_presets(presets_win);
+	print_presets(presets_win, true);
 	
 	status_win = newwin(15, 40, starty, 30);
 	box(status_win, 0, 0);
@@ -107,18 +101,14 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
-		if (scan) {
-			scan_dab(status_win);
-			wprintf(L"Found %d programs\n", totalProgram);
-		}
 		wrefresh(status_win);
 		
 		SetVolume(8);
+			
 		SetStereoMode(1);
 		SetApplicationType(2);
 		SyncRTC(true);
 		
-		wprintw(status_win, "Found %d DAB channels\n", totalProgram);
 		if (totalProgram == 0) {
 
 			syslog(LOG_PERROR, "DAB Autosearch failed");	
@@ -146,7 +136,9 @@ int main(int argc, char *argv[]) {
 			wclear(status_win);
 
 		} else {
+			
 			PlayStream(0, 0);	// Ok.. found DAB stations, play first DAB station then
+
 		}
 
 		long playindex = GetPlayIndex();
@@ -180,6 +172,13 @@ int main(int argc, char *argv[]) {
 							break;
 							
 						case 2:
+							wclear(status_win);
+							for(decltype(stations.size()) i = 0; i < stations.size(); ++i)
+								wprintw(status_win, "%ls\n", stations[i].c_str());
+							
+							wgetch(status_win);
+							wclear(status_win);
+							break;
 						case 7:
 							wclear(status_win);
 							if (GetPlayMode() == 0)
@@ -229,6 +228,7 @@ int main(int argc, char *argv[]) {
 							} else {
 								PlayStream(0, 0);		// Play DAB station 0
 							}
+							print_presets(presets_win);
 							napms(150);
 							break;
 							
@@ -313,11 +313,13 @@ int main(int argc, char *argv[]) {
 					} else
 						wprintw(status_win, "Not Assigned.\n\n");
 					
+					print_presets(presets_win);
+
 					wprintw(status_win, "Press a key to continue ");
 					wrefresh(status_win);
 					wgetch(status_win);
-					
 					wclear(status_win);
+					
 					break;
 					
 				case 'q':
@@ -359,7 +361,7 @@ int main(int argc, char *argv[]) {
 			
 			print_playstatus(status_win);
 			
-			napms(200);
+			napms(100);
 
 		}
 		CloseRadioPort();
@@ -502,11 +504,29 @@ void print_playstatus(WINDOW *win)
 
 }
 
-void print_presets(WINDOW *win)
+void print_presets(WINDOW *win, bool setupmode)
 {
 	box(win, 0, 0);
+
+	if (setupmode) {
+		mvwprintw(win, 1, 1, "Presets: F1 - F2 - F3 - F4 - F5 - F6 - F7 - F8 -");
+		wrefresh(win);
+		return;
+	}
 	
-	mvwprintw(win, 1, 1, "Presets: F1 %s F2 - F3 - F4 - F5 - F6 -", "-");
+	if (GetPlayMode() == 0)
+		mvwprintw(win, 1, 1, "Presets: F1 %d F2 %d F3 %d F4 %d F5 %d F6 %d F7 %d F8 %d", 
+					GetPreset(0,0),GetPreset(0,1),GetPreset(0,2),GetPreset(0,3),
+					GetPreset(0,4),GetPreset(0,5),GetPreset(0,6),GetPreset(0,7)
+		);
+	else if (GetPlayMode() == 1)
+		mvwprintw(win, 1, 1, "Presets: F1 %d F2 %d F3 %d F4 %d F5 %d F6 %d F7 %d F8 %d", 
+					GetPreset(1,0),GetPreset(1,1),GetPreset(1,2),GetPreset(1,3),
+					GetPreset(1,4),GetPreset(1,5),GetPreset(1,6),GetPreset(1,7)
+		);
+	else
+		mvwprintw(win, 1, 1, "Presets: F1 - F2 - F3 - F4 - F5 - F6 - F7 - F8 -");
+		
 	wrefresh(win);
 }
 
