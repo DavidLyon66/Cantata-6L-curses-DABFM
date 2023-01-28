@@ -4,3 +4,6 @@
 [submodule "ascii_art"]
 	path = ascii_art
 	url = https://github.com/symisc/ascii_art.git
+[submodule "cpp-subprocess"]
+	path = cpp-subprocess
+	url = https://github.com/arun11299/cpp-subprocess.git

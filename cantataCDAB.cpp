@@ -37,23 +37,28 @@ vector <string> playstatuslist {
 								
 vector <wstring> stations;
 
+string inipath("/.config/cantata-tech/cantataCDAB.ini");
+
 void print_menu(WINDOW *menu_win, int highlight);
 void print_playstatus(WINDOW *win);
 void print_presets(WINDOW *win, bool setupmode=false);
 bool scan_dab(WINDOW *win);
+void create_inidir(WINDOW *win);
 
 int main(int argc, char *argv[]) {
 	
 	wchar_t buffer[300];
+	CSimpleIniA inifile;
 	
 	openlog("cantataCDAB", LOG_ODELAY, LOG_USER);
 	
 	WINDOW *menu_win, *status_win, *presets_win;
-	int highlight = 1;
-	int choice = 0;
-	int c;
-	int maxY, maxX;
-	
+	int highlight(1),
+		choice(0),
+		c,
+		maxY, maxX,
+		dab_station, fm_station;
+		
 	initscr();
 	getmaxyx(stdscr, maxY, maxX);
 	
@@ -83,6 +88,18 @@ int main(int argc, char *argv[]) {
 	box(status_win, 0, 0);
 	wprintw(status_win, "Checking port\n");
 	wrefresh(status_win);
+
+	inipath.insert(0,getenv("HOME"));
+	inifile.SetUnicode();
+	int rc = inifile.LoadFile(inipath.c_str());
+	if (rc < 0)
+		create_inidir(status_win);
+	//else
+	//	wprintw(status_win, "Config directory exists\n");
+		
+	//wprintw(status_win, "Config = %s\n",inipath.c_str());
+	//wrefresh(status_win);
+	//c = wgetch(status_win);
 	
 	if(OpenRadioPort((char*)"/dev/ttyACM0", true)) {
 		
@@ -103,7 +120,12 @@ int main(int argc, char *argv[]) {
 
 		wrefresh(status_win);
 		
-		SetVolume(8);
+		int v = stoi(inifile.GetValue("Player","volume","50"));
+		string pm = inifile.GetValue("Player","band","DAB");
+		dab_station = stoi(inifile.GetValue("Player","station_dab","0")); 
+		fm_station = stoi(inifile.GetValue("Player","station_fm","94500"));
+
+		SetVolume((int ) ((float) v / 6.25));
 			
 		SetStereoMode(1);
 		SetApplicationType(2);
@@ -137,8 +159,13 @@ int main(int argc, char *argv[]) {
 
 		} else {
 			
-			PlayStream(0, 0);	// Ok.. found DAB stations, play first DAB station then
-
+			wclear(status_win);
+			
+			if (pm == "DAB")
+				PlayStream(0, dab_station);	// Ok.. play last DAB station then
+			else
+				PlayStream(1, fm_station);	// Ok.. play last FM station then
+			
 		}
 
 		long playindex = GetPlayIndex();
@@ -198,6 +225,11 @@ int main(int argc, char *argv[]) {
 							NextStream();
 
 							PlayStream(GetPlayMode(), GetPlayIndex());
+							if (GetPlayMode() == 0)
+								dab_station = GetPlayIndex();
+							else
+								fm_station = GetPlayIndex();
+
 							break;
 						case 4:
 							wclear(status_win);
@@ -207,15 +239,21 @@ int main(int argc, char *argv[]) {
 							PrevStream();
 
 							PlayStream(GetPlayMode(), GetPlayIndex());
+							if (GetPlayMode() == 0)
+								dab_station = GetPlayIndex();
+							else
+								fm_station = GetPlayIndex();
+								
 							break;
 						case 9:
 							wclear(status_win);
-							mvwprintw(status_win, 2, 12, "Presets");
+							mvwprintw(status_win, 2, 2, "Preset\n\n");
 							// FM
 							for (int s=0;s<8;s++)
 							{
-								wprintw(status_win, "Preset %d = %ld\n",s+1, GetPreset(GetPlayMode(),s));
+								wprintw(status_win, "  %d = %ld\n",s+1, GetPreset(GetPlayMode(),s));
 							}
+							print_presets(presets_win);
 							wrefresh(status_win);
 							wgetch(status_win);
 							break;						
@@ -223,11 +261,12 @@ int main(int argc, char *argv[]) {
 							wclear(status_win);
 							mvwprintw(status_win, 2, 12, "Changing Band");
 							wrefresh(status_win);
-							if (GetPlayMode()==0){
-								PlayStream(1, 94500);	// No DAB stations, just play FM 94.5Mhz
-							} else {
-								PlayStream(0, 0);		// Play DAB station 0
-							}
+
+							if (GetPlayMode() == 0)
+								PlayStream(1, fm_station);
+							else
+								PlayStream(0, dab_station);
+
 							print_presets(presets_win);
 							napms(150);
 							break;
@@ -363,9 +402,22 @@ int main(int argc, char *argv[]) {
 			
 			napms(100);
 
+		}		
+		
+		inifile.SetValue("Player","volume", to_string((float) 6.25 * GetVolume()).c_str());
+
+		if (GetPlayMode() == 0) {
+			inifile.SetValue("Player","band","DAB");
+			inifile.SetValue("Player","station_dab", to_string(GetPlayIndex()).c_str());
+		} else {
+			inifile.SetValue("Player","band","FM");
+			inifile.SetValue("Player","station_fm", to_string(GetPlayIndex()).c_str());
 		}
+				
+		inifile.SaveFile(inipath.c_str());
+
 		CloseRadioPort();
-			
+	
 	} else {
 			
 		wprintw(status_win, "\nFailed to connect to \n");
@@ -442,6 +494,16 @@ void print_playstatus(WINDOW *win)
 			mvwprintw(win, y++, x, "Signal=%d,                 ", GetSignalStrength(&bitError));
 			mvwprintw(win, y++, x, "Audio Sampling Rate=%d kHz, ", GetSamplingRate());
 			mvwprintw(win, y++, x, "Data Rate=%d kHz, ", GetDataRate());
+
+			uint32 ServiceID;
+			uint16 EnsembleID;
+			if (GetProgramInfo(playmode, &ServiceComponentID, &ServiceID, &EnsembleID)) {
+				if (GetEnsembleName(playmode, 1, buffer))
+					mvwprintw(win, y++, x,"%ls", buffer);
+				else
+					y++;
+				mvwprintw(win, y++, x, "CID:%X,SID:%X,EID:%X,", ServiceComponentID, ServiceID, EnsembleID);
+			}
 			
 	    } else if (playmode==1) {
 			// FM
@@ -461,15 +523,6 @@ void print_playstatus(WINDOW *win)
 				mvwprintw(win, y++, x, "Mono");
 		}
 			
-		uint32 ServiceID;
-		uint16 EnsembleID;
-		if (GetProgramInfo(playmode, &ServiceComponentID, &ServiceID, &EnsembleID)) {
-			if (GetEnsembleName(playmode, 1, buffer))
-				mvwprintw(win, y++, x,"%ls", buffer);
-			else
-				y++;
-			mvwprintw(win, y++, x, "CID:%X,SID:%X,EID:%X,", ServiceComponentID, ServiceID, EnsembleID);
-		}
 		
 	} else {
 
@@ -563,3 +616,26 @@ bool scan_dab(WINDOW *win)
 	
 }
 
+void create_inidir(WINDOW *win) {
+	
+	string dircmd("mkdir -p ");
+	dircmd.append(getenv("HOME"));
+	dircmd.append("/.config/cantata-tech");
+	
+	wprintw(win, "Config file not found.\nCreating new config file\n");
+
+	wprintw(win, "Creating directory %s\n", dircmd.c_str());
+	const int direrr = system(dircmd.c_str());
+	if (direrr == -1)
+		wprintw(win, "Creating directory failed\n");
+	else if (direrr == 0) {
+		wprintw(win, "Created directory\n");
+
+		wprintw(win, "writing %s\n", inipath.c_str());
+
+		CSimpleIniA inifile;
+		inifile.SetValue("Communications","port","/dev/ttyACM0");
+		inifile.SaveFile(inipath.c_str());
+	}
+
+}
