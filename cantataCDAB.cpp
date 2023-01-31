@@ -94,12 +94,6 @@ int main(int argc, char *argv[]) {
 	int rc = inifile.LoadFile(inipath.c_str());
 	if (rc < 0)
 		create_inidir(status_win);
-	//else
-	//	wprintw(status_win, "Config directory exists\n");
-		
-	//wprintw(status_win, "Config = %s\n",inipath.c_str());
-	//wrefresh(status_win);
-	//c = wgetch(status_win);
 	
 	if(OpenRadioPort((char*)"/dev/ttyACM0", true)) {
 		
